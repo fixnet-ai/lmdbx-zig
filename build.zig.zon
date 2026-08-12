@@ -1,19 +1,12 @@
 .{
     .name = .lmdbx,
     .fingerprint = 0x1567d158ce2f525a,
-    .version = "0.4.0",
+    .version = "0.4.1",
     .minimum_zig_version = "0.16.0",
 
     .dependencies = .{
-        // libmdbx C library, master
-        .mdbx = .{ .url = "https://github.com/erthink/libmdbx/archive/refs/heads/master.tar.gz", .hash = "N-V-__8AAD4_MQArgIek13Rf-VqoAvJup6onfaEQTJ4G0ix7" },
-
-        // We need this until https://github.com/ziglang/zig/pull/20081 gets merged
-        .cpu_features = .{ .url = "https://github.com/slyshykO/cpu_model/archive/refs/heads/main.tar.gz", .hash = "N-V-__8AAOPQAAAWoFTwx0XSfNINAuu-8MCR0PnBJAYa_VjH" },
-        .zbench = .{
-            .url = "https://github.com/hendriknielaender/zBench/archive/refs/tags/v0.13.0.tar.gz",
-            .hash = "zbench-0.13.0-YTdc7xVBAQCCMC-IdLLuotBeiNNNm8k9Pi2V4VYqrwfI",
-        },
+        .mdbx = .{ .path = "../libmdbx" },
+        .cpu_features = .{ .path = "../cpu_model" },
     },
 
     .paths = .{
