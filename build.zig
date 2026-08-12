@@ -80,6 +80,14 @@ pub fn build(b: *std.Build) void {
             // We don't link with MSVC CRT
             if (target.result.os.tag == .windows) "-DMDBX_WITHOUT_MSVC_CRT=1" else "",
 
+            // FreeBSD: mdbx-internals.h sets _XOPEN_SOURCE=0 which disables
+            // __XSI_VISIBLE → S_IFMT/S_IFBLK/S_IFREG/_SC_PAGE_SIZE hidden.
+            // Predefine _XOPEN_SOURCE=600 so mdbx skips its redefinition.
+            // ENODATA is Linux-specific errno not defined on BSD.
+            if (target.result.os.tag == .freebsd) "-D_XOPEN_SOURCE=600" else "",
+            if (target.result.os.tag == .freebsd) "-D__BSD_VISIBLE" else "",
+            if (target.result.os.tag == .freebsd) "-DENODATA=61" else "",
+
             // Link libraries
             switch (target.result.os.tag) {
                 .windows => "-lm -lntdll -lwinmm -luser32 -lkernel32 -ladvapi32 -lole32",
