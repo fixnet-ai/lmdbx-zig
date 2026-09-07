@@ -22,6 +22,26 @@ pub fn build(b: *std.Build) void {
     const cpuf_dep = b.dependency("cpu_features", .{});
     mdbx.addIncludePath(cpuf_dep.path("cpu_model"));
 
+    // Android (Bionic) 交叉编译：zig 0.16.0 不内置 Bionic，C 源（mdbx.c → inttypes.h、
+    // cpu_model/aarch64.c → aarch64/lse_atomics/android.inc → string.h）缺系统头会编译失败。
+    // sysroot 来源优先级：
+    //   1) b.sysroot（上游 -Dsysroot 经依赖链传播，zigfoundation 消费者已实证）
+    //   2) ANDROID_NDK_HOME 环境变量（与 zigprebuild/build.zig findNdkSysroot 同模式，
+    //      使本仓可独立 `zig build -Dtarget=*-linux-android`）
+    if (target.result.os.tag == .linux and target.result.abi == .android) {
+        const sysroot = b.sysroot orelse findNdkSysroot(b);
+        if (sysroot) |s| {
+            // 系统头必须 -isystem（排在 zig 内置头之后），mdbx.c 的
+            // #include_next <inttypes.h> 才能落到 NDK 的同名头。
+            mdbx.addSystemIncludePath(.{ .cwd_relative = b.pathJoin(&.{ s, "usr", "include" }) });
+            mdbx.addSystemIncludePath(.{ .cwd_relative = b.pathJoin(&.{
+                s, "usr", "include", b.fmt("{s}-linux-android", .{@tagName(target.result.cpu.arch)}),
+            }) });
+        } else {
+            std.log.warn("android target: NDK sysroot not found (set ANDROID_NDK_HOME or -Dsysroot); mdbx C sources will fail to compile", .{});
+        }
+    }
+
     if (target.result.cpu.arch == .x86_64 or target.result.cpu.arch == .aarch64) {
         mdbx.addCSourceFile(.{ .file = switch (target.result.cpu.arch) {
             .x86_64 => cpuf_dep.path("cpu_model/x86.c"),
@@ -89,4 +109,20 @@ pub fn build(b: *std.Build) void {
 
     mdbx.pic = true; // Enforce PIC
     mdbx.sanitize_c = .off; // Address sanitization breaks libMDBX
+}
+
+/// 从 ANDROID_NDK_HOME 定位 NDK sysroot（$NDK/toolchains/llvm/prebuilt/<host>/sysroot）。
+/// 返回 null 表示未设置 ANDROID_NDK_HOME 或找不到 prebuilt 目录。
+fn findNdkSysroot(b: *std.Build) ?[]const u8 {
+    const ndk_home = b.graph.environ_map.get("ANDROID_NDK_HOME") orelse return null;
+    const prebuilt = b.pathJoin(&.{ ndk_home, "toolchains", "llvm", "prebuilt" });
+    var dir = std.Io.Dir.openDirAbsolute(b.graph.io, prebuilt, .{ .iterate = true }) catch return null;
+    defer dir.close(b.graph.io);
+    var it = dir.iterate();
+    while (it.next(b.graph.io) catch return null) |entry| {
+        if (entry.kind == .directory) {
+            return b.pathJoin(&.{ prebuilt, entry.name, "sysroot" });
+        }
+    }
+    return null;
 }
