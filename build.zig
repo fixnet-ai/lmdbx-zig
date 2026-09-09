@@ -42,6 +42,19 @@ pub fn build(b: *std.Build) void {
         }
     }
 
+    // iOS：zig 0.16.0 对 .ios 目标不自动加入内置 darwin libc 头目录（期望外部 SDK），
+    // C 源（mdbx.c → stdlib.h、cpu_model/aarch64.c → apple.inc → TargetConditionals.h）
+    // 缺系统头会编译失败。手动补 any-darwin-any（与 macOS 同源的头目录）。
+    if (target.result.os.tag == .ios) {
+        const darwin_include = b.pathJoin(&.{
+            b.graph.zig_lib_directory.path orelse ".",
+            "libc",
+            "include",
+            "any-darwin-any",
+        });
+        mdbx.addSystemIncludePath(.{ .cwd_relative = darwin_include });
+    }
+
     if (target.result.cpu.arch == .x86_64 or target.result.cpu.arch == .aarch64) {
         mdbx.addCSourceFile(.{ .file = switch (target.result.cpu.arch) {
             .x86_64 => cpuf_dep.path("cpu_model/x86.c"),
@@ -98,10 +111,10 @@ pub fn build(b: *std.Build) void {
             if (target.result.os.tag == .freebsd) "-D__BSD_VISIBLE" else "",
             if (target.result.os.tag == .freebsd) "-DENODATA=61" else "",
 
-            // Link libraries
+            // Link libraries（iOS 与 macOS 同为 darwin，无 librt，只链 -lm）
             switch (target.result.os.tag) {
                 .windows => "-lm -lntdll -lwinmm -luser32 -lkernel32 -ladvapi32 -lole32",
-                .macos, .openbsd => "-lm",
+                .macos, .ios, .openbsd => "-lm",
                 else => "-lm -lrt",
             },
         },
